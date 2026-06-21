@@ -57,8 +57,8 @@ Designed around:
 ### Build from source
 
 ```bash
-git clone https://github.com/azytar/maverick.git
-cd maverick
+git clone https://github.com/azytar/Maverick.git
+cd Maverick
 cargo build --release
 
 ```
