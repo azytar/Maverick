@@ -47,8 +47,8 @@ Diseñado para:
 ### Compilar desde fuente
 
 ```bash
-git clone https://github.com/azytar/maverick.git
-cd maverick
+git clone https://github.com/azytar/Maverick.git
+cd Maverick
 cargo build --release
 cp target/release/maverick ~/.local/bin
 ```
