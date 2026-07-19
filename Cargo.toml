@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "maverick"
-version = "0.18.1"
+version = "0.18.2"
 edition = "2021"
 authors = ["azytar"]
 description = "maverick — columnar tiling WM with niri-style layout"
