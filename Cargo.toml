@@ -1,3 +1,7 @@
+[workspace]
+members = ["maverick-sys", "maverick-dialog"]
+resolver = "2"
+
 [package]
 name = "maverick"
 version = "0.18.1"
@@ -10,9 +14,18 @@ license = "GPL-3.0"
 name = "maverick"
 path = "src/main.rs"
 
+[features]
+# The internal status bar is optional. Build with it (default):
+#   cargo build --release
+# Build without it (rely on Waybar/Polybar or no bar at all):
+#   cargo build --release --no-default-features
+default = ["internal-bar"]
+internal-bar = []
+
 [dependencies]
-x11rb = { version = "0.13", default-features = false, features = ["randr"] }
+maverick-sys = { path = "maverick-sys" }
 libc = "0.2"
+x11rb = { version = "0.13", default-features = false, features = ["randr"] }
 
 [profile.release]
 opt-level = 3
