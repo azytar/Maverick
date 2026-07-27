@@ -20,7 +20,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   practice, matches dwm/i3-style click-to-focus grabs); `pointer_mode`
   stays `SYNC` since `on_button_press` still needs to conditionally replay
   or keep it frozen for drags.
-  ⚠️ Not yet confirmed fixed in real usage — pending manual test.
+  Confirmed fixed in real usage (mouse click-to-focus, tested against
+  Firefox and Minecraft).
 
 ## [0.18.2] — 2026-07-19
 
