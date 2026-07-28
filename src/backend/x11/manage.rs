@@ -144,7 +144,10 @@ impl WindowManager {
             // Process window type
             if let Ok(ref prop) = c_wtype.reply() {
                 if prop.type_ == u32::from(AtomEnum::ATOM) {
-                    let atoms: Vec<u32> = prop.value32().map(std::iter::Iterator::collect).unwrap_or_default();
+                    let atoms: Vec<u32> = prop
+                        .value32()
+                        .map(std::iter::Iterator::collect)
+                        .unwrap_or_default();
                     for a in atoms {
                         if a == self.atoms.net_wm_window_type_desktop
                             || a == self.atoms.net_wm_window_type_dock
@@ -174,7 +177,10 @@ impl WindowManager {
             // Process window state
             if let Ok(ref sp) = c_wstate.reply() {
                 if sp.type_ == u32::from(AtomEnum::ATOM) {
-                    let atoms: Vec<u32> = sp.value32().map(std::iter::Iterator::collect).unwrap_or_default();
+                    let atoms: Vec<u32> = sp
+                        .value32()
+                        .map(std::iter::Iterator::collect)
+                        .unwrap_or_default();
                     for a in atoms {
                         if a == self.atoms.net_wm_state_fullscreen {
                             client.flags.set(WinFlags::FULLSCREEN);
@@ -341,7 +347,11 @@ impl WindowManager {
         Ok(())
     }
 
-    pub(super) fn unmanage(&mut self, win: Window, destroyed: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub(super) fn unmanage(
+        &mut self,
+        win: Window,
+        destroyed: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // 1. If already removed (e.g. double Unmap + Destroy event), exit silently.
         let client = match self.engine.state.remove_client(win) {
             Some(c) => c,
@@ -420,7 +430,10 @@ impl WindowManager {
         }
     }
 
-    pub(super) fn transient_for(&self, win: Window) -> Result<Option<Window>, Box<dyn std::error::Error>> {
+    pub(super) fn transient_for(
+        &self,
+        win: Window,
+    ) -> Result<Option<Window>, Box<dyn std::error::Error>> {
         let prop = self
             .conn
             .get_property(
@@ -469,7 +482,11 @@ impl WindowManager {
         if self.engine.state.clients.contains_key(&win) {
             return Some(win);
         }
+        let mut seen = std::collections::HashSet::new();
         loop {
+            if !seen.insert(win) {
+                return None;
+            }
             let tree = self.conn.query_tree(win).ok()?.reply().ok()?;
             let parent = tree.parent;
             if parent == self.root || parent == win || parent == x11rb::NONE {
@@ -482,7 +499,11 @@ impl WindowManager {
         }
     }
 
-    pub(super) fn set_fullscreen(&mut self, win: Window, fs: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub(super) fn set_fullscreen(
+        &mut self,
+        win: Window,
+        fs: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(c) = self.engine.state.clients.get_mut(&win) {
             if fs == c.is_fullscreen() {
                 return Ok(());
@@ -509,12 +530,7 @@ impl WindowManager {
             self.stack_dirty = true;
         }
         self.write_net_wm_state(win);
-        let mi = self
-            .engine
-            .state
-            .clients
-            .get(&win)
-            .map_or(0, |c| c.monitor);
+        let mi = self.engine.state.clients.get(&win).map_or(0, |c| c.monitor);
         self.arrange(mi)?;
         // Raise fullscreen windows above everything else
         if self
@@ -560,12 +576,7 @@ impl WindowManager {
             self.stack_dirty = true;
         }
         self.write_net_wm_state(win);
-        let mi = self
-            .engine
-            .state
-            .clients
-            .get(&win)
-            .map_or(0, |c| c.monitor);
+        let mi = self.engine.state.clients.get(&win).map_or(0, |c| c.monitor);
         self.arrange(mi)?;
         if self
             .engine
@@ -588,7 +599,22 @@ impl WindowManager {
         let Some(c) = self.engine.state.clients.get(&win) else {
             return;
         };
-        let mut state_atoms = Vec::new();
+        let mut state_atoms: Vec<u32> = self
+            .conn
+            .get_property(false, win, self.atoms.net_wm_state, AtomEnum::ATOM, 0, 32)
+            .ok()
+            .and_then(|c| c.reply().ok())
+            .map(|r| {
+                r.value32()
+                    .map(Iterator::collect::<Vec<u32>>)
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        state_atoms.retain(|&a| {
+            a != self.atoms.net_wm_state_fullscreen
+                && a != self.atoms.net_wm_state_maximized_vert
+                && a != self.atoms.net_wm_state_maximized_horiz
+        });
         if c.is_fullscreen() {
             state_atoms.push(self.atoms.net_wm_state_fullscreen);
         }
