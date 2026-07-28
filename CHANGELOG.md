@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.18.2] — 2026-07-19
+## [0.18.2] — 2026-07-28
 
 Two prior attempts at the next release (internally called "0.18.4" in
 early planning) added a stack of new features — TOML config, a
@@ -92,6 +92,137 @@ further along.
   from `core`/`types.rs`. Confirmed via `grep -rl x11rb src/core/
   src/types.rs` returning nothing after the change.
   (`fe2e766`)
+
+- **`maverick-sys`: control socket could be tricked by symlink attack.**
+  `remove_file` ran before `bind` without checking the existing file
+  type; a symlink pointing outside the runtime dir would be followed.
+  Now only removes the path if it is a regular socket. Also: unbounded
+  thread creation per connection limited to 32 concurrent handlers;
+  `identity_json` now escapes all JSON-special characters instead of
+  only quotes and newlines; `send_command` rejects commands containing
+  `\\n` to prevent line-protocol injection.
+
+- **`maverick-sys`: identity ficha parser failed on process names
+  containing `)` or commas in field values.** `/proc/<pid>/stat`'s
+  second field (comm) is enclosed in parentheses but the comm itself
+  may contain `)`. Switched from `find(')')` to `rfind(')')`. The
+  custom JSON parser split on `,` unconditionally, breaking when a
+  string value contained a comma; replaced with a char-by-char walker
+  that respects JSON string quoting.
+
+- **`maverick-sys`: `wait_readable` busy-looped on `POLLERR`/`POLLHUP`.**
+  `poll()` returning `> 0` was treated as "data available" regardless
+  of `revents`. Now checks that `POLLIN` is actually set so an error
+  state doesn't spin the event loop.
+
+- **`maverick-sys`: `detach_from_terminal` ignored `setsid()` failure.**
+  If the process was already a session leader, `setsid()` returns
+  `EPERM` and the WM would not actually detach. The return value is now
+  discarded (the subsequent `isatty` check still works), but the intent
+  is clearer and the function no longer silently depends on it
+  succeeding.
+
+- **`maverick-sys`: `hub::emit` held the subscriber mutex during
+  channel sends.** A slow `subscribe` connection could block the WM
+  thread. The subscriber list is now cloned under the lock and the
+  actual sends happen outside it.
+
+- **`maverickctl`: TTY confirmation read input byte-by-byte, breaking
+  UTF-8 multi-byte characters.** `read(&mut [0u8;1])` and `as char`
+  produced garbled strings for non-ASCII input. Replaced with
+  `read_line` for correct Unicode handling.
+
+- **`core`: `CycleLayout`/`SetLayout` could panic on a monitor-less
+  state.** Both actions accessed `self.state.monitors[mi]` without
+  verifying the index was in bounds. Added the same guard used by
+  `ToggleBar` and other actions.
+
+- **`core`: `collapse_col` computed ideal scroll before collapsing,
+  leaving the viewport slightly off-centre.** Moved the
+  `ideal_scroll` call to after the column is removed so it reflects
+  the new column count.
+
+- **`core`: `focus_mon`/`move_mon` treated `Dir::Left` and
+  `Dir::Right` identically to `Dir::Next`** (always wrapping right).
+  They now map `Left`/`Prev` to decrement and `Right`/`Next` to
+  increment, matching user expectation.
+
+- **`core`: missing `UpdateBar` effects after workspace/view changes.**
+  `View`, `MoveToWs`, `CycleLayout`, and `SetLayout` did not mark the
+  bar dirty, so the tag-active / layout-symbol / occupancy display
+  could become stale. Added `Effect::UpdateBar` to each path.
+
+- **`core`: `PublishIpcState` was never emitted.** The effect variant
+  existed but no dispatch path produced it. Now pushed at the end of
+  every `dispatch()` that produced at least one effect.
+
+- **`core`: floating windows were not clamped to the workarea in
+  `arrange_columns`.** The floating pass pushed `client.geom`
+  verbatim; windows could be placed entirely off-screen. Added clamp
+  to the workarea rect.
+
+- **`core`: `Client::new` always initialised `tags: 1`**, ignoring
+  the `workspace` parameter. Changed to `tags: 1 << workspace` so the
+  tag mask matches the assigned workspace from creation.
+
+- **`core`: `Rule::matches` compared lowercase `class`/`title` against
+  an unnormalised pattern.** A rule written with uppercase letters
+  would never match. The pattern is now also lowered before comparison.
+
+- **`main`: identity ficha left on disk if `WindowManager::new`
+  failed.** `write_meta` runs before WM initialisation; a subsequent
+  init failure called `process::exit(1)` without cleaning up the
+  ficha, leaving a zombie entry for tools like `maverickctl list`.
+  Added `cleanup_meta` call in the error path.
+
+- **`x11/events`: resolution change not detected when monitor count
+  stayed the same.** The RANDR notify handler only acted when
+  `new_mons.len() != old count`; a resolution or position change
+  that kept the same number of monitors was silently ignored.
+  Added per-monitor geometry comparison.
+
+- **`x11/manage`: `find_client` could loop infinitely on a cyclic
+  window tree.** The function walked the X11 window tree upward
+  without tracking visited windows; a client creating a parent cycle
+  would hang the WM. Added a `HashSet` guard.
+
+- **`x11/render`: `ConfigureNotify` coordinates truncated silently.**
+  `hide_offscreen` pushes windows far left (`i32::MIN`), which when
+  cast to `i16` wrapped to 0, making offscreen windows visible.
+  Values are now clamped to `i16`/`u16` ranges before casting.
+
+- **`x11/render`, `ewmh`: potential panic on empty monitor list.**
+  `focus()` and `update_workarea` indexed `monitors[0]` or assumed
+  `client.monitor` was always valid. Added bounds checks / `.first()`.
+
+- **`x11/input`: conflicting passive SYNC + ASYNC `grab_button`
+  could freeze pointer input.** A general SYNC grab on all buttons
+  was installed alongside specific ASYNC grabs for `Mod4 + button`.
+  Removed the SYNC grab; only the specific ASYNC grabs remain.
+
+- **`x11/manage`: `write_net_wm_state` overwrote unknown EWMH
+  atoms.** It replaced `_NET_WM_STATE` with only the fullscreen/
+  maximized flags the WM tracks, discarding `_NET_WM_STATE_STICKY`,
+  `_NET_WM_STATE_HIDDEN`, etc. set by other tools. Now reads the
+  current atom list first and preserves unmanaged atoms.
+
+- **`backend/bar`: potential `u16`/`i16` overflow in label and
+  glyph calculations.** Arithmetic on `u16`/`i16` values could wrap
+  with many wide tags. Converted to `i32` intermediates with
+  saturating operations and final clamp to the target type.
+
+### Changed
+
+- **`core`: `PublishIpcState` emitted after every state-mutating
+  `dispatch`.** Previously the effect existed but was never produced;
+  now pushed automatically so IPC subscribers (bars, `maverickctl
+  subscribe`) receive fresh snapshots without explicit
+  per-action wiring.
+
+- **`core`: `focus_mon`/`move_mon` now accept directional variants.**
+  `focus-mon left`/`right` and `move-mon left`/`right` now move in
+  the expected direction instead of always wrapping to the next
+  monitor (which was the behaviour of `next`).
 
 ### Known issues — core/backend separation (in progress, tracked here on purpose)
 
