@@ -3,95 +3,9 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.18.2] — 2026-07-28
-
-Two prior attempts at the next release (internally called "0.18.4" in
-early planning) added a stack of new features — TOML config, a
-"Window" floating layout, a predictive prefetch daemon — but both were
-abandoned after serious regressions during development, including one
-where `backend/x11/mod.rs` was lost outright to an accidental
-`git checkout --` and had to be reconstructed from an old blob. Rather
-than resume that feature list, this release starts over from `main`
-(v0.18.1) with a narrower goal: **pay down the coupling between the
-domain model and X11** so a non-X11 backend (Wayland) becomes possible
-later, without adding user-facing features. No TOML config, no new
-layout modes, no prefetch daemon in this release — that work is
-shelved, not lost, and can be revisited once the split below is
-further along.
-
-### Added
-
-- **Instance control plane** (`maverick-sys`, new workspace member):
-  `identity` (per-instance PID/display/tty "ficha" under the runtime
-  dir), `control` (`ControlServer` — a Unix-socket protocol:
-  `ping`/`identify`/`state`/`dispatch`/`restart`/`reload`/`subscribe`/
-  `quit`), `hub` (`ControlHub`, the MPSC bridge between the socket
-  thread and the single-threaded X11 event loop), `discover`
-  (list/find/quit instances by name or display). Replaces the old PID
-  file + `pkill`-by-name approach from the abandoned line.
-- **`maverickctl`** (`maverick-sys/src/bin/`): CLI for the above —
-  `list|state|msg|subscribe|quit[--confirm]|quit-all|restart|reload|prune`.
-  Instance resolution: `--name` → `$MAVERICK_INSTANCE` → sole live
-  instance → refuse/ambiguous list.
-- **`maverick-dialog`** (new workspace member): standalone X11
-  yes/no confirmation window, the only `x11rb` user outside the WM
-  itself. `Mod4+Shift+Q` now spawns `maverickctl quit --confirm`
-  instead of calling `Action::Quit` directly, so a stray keypress
-  can't kill the session; the raw `Action::Quit` is still reachable
-  over the control socket.
-- **Maximize** implemented for real: `WinFlags::MAXIMIZED`,
-  `Client::is_maximized()`; a maximized-but-not-fullscreen focused
-  window fills `workarea` (respects bar/dock struts) and keeps its
-  border, vs. fullscreen which covers the whole screen with no
-  border. `_NET_WM_STATE_MAXIMIZED_VERT/HORIZ` handled on both read
-  (initial `manage()`) and write (`on_client_message`).
-- **External dock support**: docks (Waybar/Polybar/etc.) are detected
-  by `_NET_WM_WINDOW_TYPE_DOCK`/`_DESKTOP`, never by process name, and
-  reserve space via `_NET_WM_STRUT_PARTIAL`/legacy `_NET_WM_STRUT`,
-  tracked per-monitor and released on destroy/unmap.
-- `internal-bar` Cargo feature (default on): `cargo build --release
-  --no-default-features` builds without the internal status bar for
-  people driving Waybar/Polybar instead.
-  (`1a36561`, `c23087c`)
-
-### Changed
-
-- **`core/` rebuilt around one seam**: `Engine::dispatch(Action) ->
-  Vec<Effect>` is now the *only* path from user/IPC intent to state
-  mutation. `Effect` is a semantic vocabulary (`ArrangeMonitor`,
-  `FocusWindow`, `SetFullscreen`, …) — the backend's `execute()` is
-  the only place that turns those into X11 calls. This removes the
-  previous split-brain where `backend/x11.rs` reimplemented action
-  handling separately from a dead `core/engine.rs::process_event`
-  path that only 3 stale unit tests exercised.
-- **Fullscreen re-modeled as presentation, not a state machine
-  block.** The old approach guarded `do_action`/`on_button_press` to
-  refuse input while any window was fullscreen — a patch on the
-  symptom that still left stale fullscreen windows on screen when
-  focus moved via `map_request` or an EWMH message. `core/present.rs`
-  now rewrites *only the focused* window's rect to `mon.screen` when
-  it's fullscreen (`layout.rs::arrange` stays pure geometry); `focus()`
-  re-arranges on every fullscreen transition. Maximize reuses the same
-  seam (fullscreen > maximized > layout precedence).
-- **`backend/x11.rs` split** into `backend/x11/{mod,manage,events,
-  ewmh,input,pointer,render,struts,bar,actions}.rs` (previously one
-  ~2900-line file). No behavioural change, just navigability.
-- Dead code removed: `core/engine.rs`'s old `process_event`/`AppEvent`/
-  `Command` path, `core/events.rs`, `core/commands.rs`,
-  `Workspace::move_window_right()` (flagged unused in 0.18.1).
+## [Unreleased]
 
 ### Fixed
-
-- **`WindowId` was an alias for x11rb's `Window`, not a real
-  backend-agnostic type** (`src/types.rs`). The domain model — the part
-  that's supposed to have zero X11 knowledge — imported
-  `x11rb::protocol::xproto::Window` directly. `WindowId` is now a
-  plain `u32` with no dependency on `x11rb`; since x11rb's `Window` is
-  itself a `u32` alias, this is behaviourally a no-op (no cast sites
-  needed anywhere in `backend/`) but it removes the last x11rb import
-  from `core`/`types.rs`. Confirmed via `grep -rl x11rb src/core/
-  src/types.rs` returning nothing after the change.
-  (`fe2e766`)
 
 - **`maverick-sys`: control socket could be tricked by symlink attack.**
   `remove_file` ran before `bind` without checking the existing file
@@ -195,10 +109,20 @@ further along.
   `focus()` and `update_workarea` indexed `monitors[0]` or assumed
   `client.monitor` was always valid. Added bounds checks / `.first()`.
 
-- **`x11/input`: conflicting passive SYNC + ASYNC `grab_button`
-  could freeze pointer input.** A general SYNC grab on all buttons
-  was installed alongside specific ASYNC grabs for `Mod4 + button`.
-  Removed the SYNC grab; only the specific ASYNC grabs remain.
+- **`x11/input`: keyboard froze after mouse-focusing a window**
+  (`grab_buttons`). The catch-all `grab_button` used `pointer_mode=SYNC`
+  **and** `keyboard_mode=SYNC`. Every matching `ButtonPress` froze both
+  devices, but `on_button_press` only called
+  `allow_events(REPLAY_POINTER)`, which releases the pointer but not
+  the keyboard. The keyboard stayed frozen at the X11 level after
+  clicking any managed window, breaking WM shortcuts and the client's
+  own key input — most noticeable with clients that grab focus
+  aggressively on click (Firefox, Minecraft). `keyboard_mode` changed to
+  `ASYNC` (standard practice, matches dwm/i3-style click-to-focus
+  grabs); `pointer_mode` stays `SYNC` since `on_button_press` still
+  needs to conditionally replay or keep it frozen for drags.
+  Confirmed fixed in real usage (mouse click-to-focus, tested against
+  Firefox and Minecraft).
 
 - **`x11/manage`: `write_net_wm_state` overwrote unknown EWMH
   atoms.** It replaced `_NET_WM_STATE` with only the fullscreen/
@@ -223,6 +147,96 @@ further along.
   `focus-mon left`/`right` and `move-mon left`/`right` now move in
   the expected direction instead of always wrapping to the next
   monitor (which was the behaviour of `next`).
+
+## [0.18.2] — 2026-07-19
+
+Two prior attempts at the next release (internally called "0.18.4" in
+early planning) added a stack of new features — TOML config, a
+"Window" floating layout, a predictive prefetch daemon — but both were
+abandoned after serious regressions during development, including one
+where `backend/x11/mod.rs` was lost outright to an accidental
+`git checkout --` and had to be reconstructed from an old blob. Rather
+than resume that feature list, this release starts over from `main`
+(v0.18.1) with a narrower goal: **pay down the coupling between the
+domain model and X11** so a non-X11 backend (Wayland) becomes possible
+later, without adding user-facing features. No TOML config, no new
+layout modes, no prefetch daemon in this release — that work is
+shelved, not lost, and can be revisited once the split below is
+further along.
+
+### Added
+
+- **Instance control plane** (`maverick-sys`, new workspace member):
+  `identity` (per-instance PID/display/tty "ficha" under the runtime
+  dir), `control` (`ControlServer` — a Unix-socket protocol:
+  `ping`/`identify`/`state`/`dispatch`/`restart`/`reload`/`subscribe`/
+  `quit`), `hub` (`ControlHub`, the MPSC bridge between the socket
+  thread and the single-threaded X11 event loop), `discover`
+  (list/find/quit instances by name or display). Replaces the old PID
+  file + `pkill`-by-name approach from the abandoned line.
+- **`maverickctl`** (`maverick-sys/src/bin/`): CLI for the above —
+  `list|state|msg|subscribe|quit[--confirm]|quit-all|restart|reload|prune`.
+  Instance resolution: `--name` → `$MAVERICK_INSTANCE` → sole live
+  instance → refuse/ambiguous list.
+- **`maverick-dialog`** (new workspace member): standalone X11
+  yes/no confirmation window, the only `x11rb` user outside the WM
+  itself. `Mod4+Shift+Q` now spawns `maverickctl quit --confirm`
+  instead of calling `Action::Quit` directly, so a stray keypress
+  can't kill the session; the raw `Action::Quit` is still reachable
+  over the control socket.
+- **Maximize** implemented for real: `WinFlags::MAXIMIZED`,
+  `Client::is_maximized()`; a maximized-but-not-fullscreen focused
+  window fills `workarea` (respects bar/dock struts) and keeps its
+  border, vs. fullscreen which covers the whole screen with no
+  border. `_NET_WM_STATE_MAXIMIZED_VERT/HORIZ` handled on both read
+  (initial `manage()`) and write (`on_client_message`).
+- **External dock support**: docks (Waybar/Polybar/etc.) are detected
+  by `_NET_WM_WINDOW_TYPE_DOCK`/`_DESKTOP`, never by process name, and
+  reserve space via `_NET_WM_STRUT_PARTIAL`/legacy `_NET_WM_STRUT`,
+  tracked per-monitor and released on destroy/unmap.
+- `internal-bar` Cargo feature (default on): `cargo build --release
+  --no-default-features` builds without the internal status bar for
+  people driving Waybar/Polybar instead.
+  (`1a36561`, `c23087c`)
+
+### Changed
+
+- **`core/` rebuilt around one seam**: `Engine::dispatch(Action) ->
+  Vec<Effect>` is now the *only* path from user/IPC intent to state
+  mutation. `Effect` is a semantic vocabulary (`ArrangeMonitor`,
+  `FocusWindow`, `SetFullscreen`, …) — the backend's `execute()` is
+  the only place that turns those into X11 calls. This removes the
+  previous split-brain where `backend/x11.rs` reimplemented action
+  handling separately from a dead `core/engine.rs::process_event`
+  path that only 3 stale unit tests exercised.
+- **Fullscreen re-modeled as presentation, not a state machine
+  block.** The old approach guarded `do_action`/`on_button_press` to
+  refuse input while any window was fullscreen — a patch on the
+  symptom that still left stale fullscreen windows on screen when
+  focus moved via `map_request` or an EWMH message. `core/present.rs`
+  now rewrites *only the focused* window's rect to `mon.screen` when
+  it's fullscreen (`layout.rs::arrange` stays pure geometry); `focus()`
+  re-arranges on every fullscreen transition. Maximize reuses the same
+  seam (fullscreen > maximized > layout precedence).
+- **`backend/x11.rs` split** into `backend/x11/{mod,manage,events,
+  ewmh,input,pointer,render,struts,bar,actions}.rs` (previously one
+  ~2900-line file). No behavioural change, just navigability.
+- Dead code removed: `core/engine.rs`'s old `process_event`/`AppEvent`/
+  `Command` path, `core/events.rs`, `core/commands.rs`,
+  `Workspace::move_window_right()` (flagged unused in 0.18.1).
+
+### Fixed
+
+- **`WindowId` was an alias for x11rb's `Window`, not a real
+  backend-agnostic type** (`src/types.rs`). The domain model — the part
+  that's supposed to have zero X11 knowledge — imported
+  `x11rb::protocol::xproto::Window` directly. `WindowId` is now a
+  plain `u32` with no dependency on `x11rb`; since x11rb's `Window` is
+  itself a `u32` alias, this is behaviourally a no-op (no cast sites
+  needed anywhere in `backend/`) but it removes the last x11rb import
+  from `core`/`types.rs`. Confirmed via `grep -rl x11rb src/core/
+  src/types.rs` returning nothing after the change.
+  (`fe2e766`)
 
 ### Known issues — core/backend separation (in progress, tracked here on purpose)
 
