@@ -5,7 +5,9 @@ impl WindowManager {
         let a = &self.atoms;
         // _NET_WORKAREA: array de CARDINAL[4] por desktop (x, y, w, h)
         let n = self.engine.cfg.n_tags;
-        let mon = &self.engine.state.monitors[0]; // usar monitor primario como referencia
+        let Some(mon) = self.engine.state.monitors.first() else {
+            return Ok(());
+        };
         let mut data = Vec::with_capacity(n * 4);
         for _ in 0..n {
             data.push(mon.workarea.x as u32);
@@ -91,7 +93,11 @@ impl WindowManager {
         Ok(())
     }
 
-    pub(super) fn set_wm_state(&self, win: Window, state: u32) -> Result<(), Box<dyn std::error::Error>> {
+    pub(super) fn set_wm_state(
+        &self,
+        win: Window,
+        state: u32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.conn
             .change_property32(
                 PropMode::REPLACE,
@@ -104,7 +110,11 @@ impl WindowManager {
         Ok(())
     }
 
-    pub(super) fn has_protocol(&self, win: Window, proto: u32) -> Result<bool, Box<dyn std::error::Error>> {
+    pub(super) fn has_protocol(
+        &self,
+        win: Window,
+        proto: u32,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         let prop = self
             .conn
             .get_property(false, win, self.atoms.wm_protocols, AtomEnum::ATOM, 0, 32)?
@@ -115,7 +125,11 @@ impl WindowManager {
             .unwrap_or(false))
     }
 
-    pub(super) fn send_proto(&self, win: Window, proto: u32) -> Result<(), Box<dyn std::error::Error>> {
+    pub(super) fn send_proto(
+        &self,
+        win: Window,
+        proto: u32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let ev = ClientMessageEvent {
             response_type: CLIENT_MESSAGE_EVENT,
             format: 32,
