@@ -116,6 +116,28 @@ impl WindowManager {
         let motion =
             EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION;
 
+        // SYNC grab on ALL windows (not just unfocused).
+        // Without this, allow_events(ReplayPointer) in on_button_press fails with
+        // BadValue because pointer is not frozen → process::exit(1).
+        //
+        // keyboard_mode MUST be ASYNC here. With SYNC/SYNC, every matching
+        // ButtonPress freezes *both* devices, but on_button_press only calls
+        // allow_events(REPLAY_POINTER) — never a keyboard AllowEvents mode — so
+        // the keyboard stayed frozen after clicking any managed window. That's
+        // what broke shortcuts (and the app's own key input) for clients like
+        // Firefox/Minecraft that grab focus on click.
+        let _ = self.conn.grab_button(
+            false,
+            win,
+            EventMask::BUTTON_PRESS,
+            GrabMode::SYNC,
+            GrabMode::ASYNC,
+            x11rb::NONE,
+            x11rb::NONE,
+            ButtonIndex::ANY,
+            ModMask::ANY,
+        );
+
         let sup: u16 = ModMask::M4.into();
         for extra in mod_variants(self.numlock) {
             let m = (sup | extra).into();
@@ -125,7 +147,7 @@ impl WindowManager {
                     win,
                     motion,
                     GrabMode::ASYNC,
-                    GrabMode::ASYNC,
+                    GrabMode::SYNC,
                     x11rb::NONE,
                     x11rb::NONE,
                     btn,
