@@ -17,6 +17,7 @@
 // commands for the WM thread and caches the state snapshot / event stream.
 
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -45,38 +46,55 @@ impl ControlServer {
     /// the WM thread: `dispatch`/`quit`/`restart`/`reload` become
     /// `ControlCommand`s the WM drains, `state` reads the hub snapshot, and
     /// `subscribe` streams hub events.
-    pub fn spawn(name: &str, identity_json: String, hub: ControlHub) -> std::io::Result<Self> {
+    pub     fn spawn(name: &str, identity_json: String, hub: ControlHub) -> std::io::Result<Self> {
         let path = identity::sock_path(name);
         // Ensure the runtime dir exists (bind won't create parent dirs).
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         // Stale socket from a previous crashed instance: unlink so bind works.
-        let _ = std::fs::remove_file(&path);
+        // Defend against TOCTOU symlink attacks: only remove if it's a socket.
+        if path.exists() {
+            if let Ok(meta) = std::fs::metadata(&path) {
+                if meta.file_type().is_socket() {
+                    let _ = std::fs::remove_file(&path);
+                } else {
+                    // Not a socket — leave it alone; bind will fail with a clear error.
+                }
+            }
+        }
         let sock = UnixListener::bind(&path)?;
 
         let stop = Arc::new(AtomicBool::new(false));
+        // Limit concurrent connection handler threads to prevent resource exhaustion.
+        let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        const MAX_CONCURRENT: usize = 32;
 
         let srv_name = name.to_string();
         let srv_stop = stop.clone();
+        let srv_active = active.clone();
         thread::spawn(move || {
-            // Keep the listener non-blocking so we can observe `stop`
-            // between accepts instead of blocking forever in accept().
             let _ = sock.set_nonblocking(true);
             loop {
                 if srv_stop.load(ORD) {
                     break;
                 }
+                // Back-pressure: don't accept if too many handlers are active.
+                if srv_active.load(ORD) >= MAX_CONCURRENT {
+                    thread::sleep(Duration::from_millis(100));
+                    continue;
+                }
                 match sock.accept() {
                     Ok((stream, _)) => {
-                        // Each connection gets its own short-lived thread so a
-                        // long-running `subscribe` never starves other clients.
+                        srv_active.fetch_add(1, ORD);
                         let name = srv_name.clone();
                         let ident = identity_json.clone();
                         let hub = hub.clone();
                         let stop = srv_stop.clone();
+                        let act = srv_active.clone();
                         thread::spawn(move || {
                             handle_conn(stream, &name, &ident, &hub, &stop);
+                            act.fetch_sub(1, ORD);
                         });
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -217,6 +235,13 @@ fn stream_events(writer: &mut UnixStream, hub: &ControlHub, stop: &Arc<AtomicBoo
 /// Connect to a running instance's control socket and send one command,
 /// returning the first reply line. Used by discovery/ctl tools.
 pub fn send_command(name: &str, cmd: &str) -> std::io::Result<String> {
+    // Reject embedded newlines to prevent command injection in the line-based protocol.
+    if cmd.contains('\n') {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "command contains newline",
+        ));
+    }
     let path = identity::sock_path(name);
     let mut stream = UnixStream::connect(&path)?;
     stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
@@ -289,19 +314,36 @@ where
     Ok(())
 }
 
+/// JSON-escape a string for inline use (same rules as identity::serde_free_json).
+fn json_esc(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// Convenience: build the identity JSON for `info` (mirrors `identity::write_meta`).
 pub fn identity_json(info: &InstanceInfo) -> String {
-    // Reuse the serializer in identity via write_meta to a temp buffer is overkill;
-    // instead inline a compact JSON matching our format.
     format!(
-        "{{\"name\":\"{n}\",\"pid\":{p},\"display\":\"{d}\",\"tty_nr\":{t},\"exe\":\"{e}\",\"started_at\":{s},\"alive\":{a}}}",
-        n = info.name,
-        p = info.pid,
-        d = info.display,
-        t = info.tty_nr,
-        e = info.exe,
-        s = info.started_at,
-        a = info.alive,
+        r#"{{"name":{},"pid":{},"display":{},"tty_nr":{},"exe":{},"started_at":{},"alive":{}}}"#,
+        json_esc(&info.name),
+        info.pid,
+        json_esc(&info.display),
+        info.tty_nr,
+        json_esc(&info.exe),
+        info.started_at,
+        info.alive,
     )
 }
 
