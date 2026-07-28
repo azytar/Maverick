@@ -116,21 +116,6 @@ impl WindowManager {
         let motion =
             EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION;
 
-        // SYNC grab on ALL windows (not just unfocused).
-        // Without this, allow_events(ReplayPointer) in on_button_press fails with
-        // BadValue because pointer is not frozen → process::exit(1).
-        let _ = self.conn.grab_button(
-            false,
-            win,
-            EventMask::BUTTON_PRESS,
-            GrabMode::SYNC,
-            GrabMode::SYNC,
-            x11rb::NONE,
-            x11rb::NONE,
-            ButtonIndex::ANY,
-            ModMask::ANY,
-        );
-
         let sup: u16 = ModMask::M4.into();
         for extra in mod_variants(self.numlock) {
             let m = (sup | extra).into();
@@ -140,7 +125,7 @@ impl WindowManager {
                     win,
                     motion,
                     GrabMode::ASYNC,
-                    GrabMode::SYNC,
+                    GrabMode::ASYNC,
                     x11rb::NONE,
                     x11rb::NONE,
                     btn,
