@@ -209,6 +209,13 @@ single entry with an unknown key name or a broken action string is dropped
 with a warning and the rest of the file still loads. Maverick never fails to
 start because of a bad config.
 
+There's a full, commented example at [`examples/config.toml`](examples/config.toml):
+
+```bash
+mkdir -p ~/.config/maverick
+cp examples/config.toml ~/.config/maverick/config.toml
+```
+
 ```toml
 # ~/.config/maverick/config.toml
 
