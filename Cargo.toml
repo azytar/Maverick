@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "maverick"
-version = "0.18.2"
+version = "0.18.3"
 edition = "2021"
 rust-version = "1.82"
 authors = ["azytar"]
