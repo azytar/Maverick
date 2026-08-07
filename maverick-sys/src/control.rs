@@ -26,8 +26,8 @@ use std::time::Duration;
 
 use crate::hub::{ControlCommand, ControlHub};
 use crate::identity::{
-    self, InstanceInfo, DISPATCH_CMD, IDENTIFY_CMD, PING_CMD, QUIT_CMD, RELOAD_CMD, RESTART_CMD,
-    STATE_CMD, SUBSCRIBE_CMD,
+    self, InstanceInfo, DISPATCH_CMD, IDENTIFY_CMD, PING_CMD, QUERY_CMD, QUIT_CMD, RELOAD_CMD,
+    RESTART_CMD, STATE_CMD, SUBSCRIBE_CMD,
 };
 
 const ORD: Ordering = Ordering::SeqCst;
@@ -191,9 +191,9 @@ fn dispatch_line(cmd: &str, name: &str, identity_json: &str, hub: &ControlHub) -
             hub.push_command(ControlCommand::Reload);
             "ok\n".to_string()
         }
-        other => {
+        tmp => {
             // `dispatch <action>`
-            if let Some(action) = other.strip_prefix(DISPATCH_CMD) {
+            if let Some(action) = tmp.strip_prefix(DISPATCH_CMD) {
                 let action = action.trim();
                 if action.is_empty() {
                     return "error dispatch: missing action\n".to_string();
@@ -201,7 +201,28 @@ fn dispatch_line(cmd: &str, name: &str, identity_json: &str, hub: &ControlHub) -
                 hub.push_command(ControlCommand::Dispatch(action.to_string()));
                 return "ok\n".to_string();
             }
-            format!("error unknown-command: {other}\n")
+            // `query <topic>` — ask the WM to answer a structured query now.
+            if let Some(topic) = tmp.strip_prefix(QUERY_CMD) {
+                let topic = topic.trim();
+                if topic.is_empty() {
+                    return "error query: missing topic\n".to_string();
+                }
+                // The WM thread computes the reply from live state (it is the
+                // only thread allowed to touch it); we block on its answer.
+                // 2s is generous: the WM loop wakes at least every 100ms.
+                let (tx, rx) = std::sync::mpsc::channel();
+                if !hub.push_command(ControlCommand::Query {
+                    topic: topic.to_string(),
+                    reply: tx,
+                }) {
+                    return "error query: WM not accepting commands\n".to_string();
+                }
+                return match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                    Ok(json) => format!("{json}\n"),
+                    Err(_) => "error query: timed out\n".to_string(),
+                };
+            }
+            format!("error unknown-command: {tmp}\n")
         }
     }
 }
@@ -287,6 +308,13 @@ pub fn dispatch(name: &str, action: &str) -> std::io::Result<String> {
     send_command(name, &format!("{DISPATCH_CMD} {action}"))
 }
 
+/// Run a structured `query <topic>` against a running instance ("workspaces",
+/// "tree", "focused", …). The WM answers from its live state; this blocks
+/// until the reply arrives. Used by `maverick-msg query …`.
+pub fn query(name: &str, topic: &str) -> std::io::Result<String> {
+    send_command(name, &format!("{QUERY_CMD} {topic}"))
+}
+
 /// Subscribe to the event stream of a running instance, invoking `on_line` for
 /// each event line as it arrives. Blocks until the socket closes or `on_line`
 /// returns `false`. Used by `maverickctl subscribe` and external bars.
@@ -312,34 +340,16 @@ where
     Ok(())
 }
 
-/// JSON-escape a string for inline use (same rules as identity::serde_free_json).
-fn json_esc(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            _ => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
 /// Convenience: build the identity JSON for `info` (mirrors `identity::write_meta`).
 pub fn identity_json(info: &InstanceInfo) -> String {
+    use crate::json::json_quote;
     format!(
         r#"{{"name":{},"pid":{},"display":{},"tty_nr":{},"exe":{},"started_at":{},"alive":{}}}"#,
-        json_esc(&info.name),
+        json_quote(&info.name),
         info.pid,
-        json_esc(&info.display),
+        json_quote(&info.display),
         info.tty_nr,
-        json_esc(&info.exe),
+        json_quote(&info.exe),
         info.started_at,
         info.alive,
     )
