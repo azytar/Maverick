@@ -381,9 +381,8 @@ pub(super) fn on_motion(
         py: i32,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let dir = match detail {
-            6 | 4 => Dir::Left,  // wheel left / up → previous column
             7 | 5 => Dir::Right, // wheel right / down → next column
-            _ => Dir::Left,
+            _ => Dir::Left,     // wheel left / up → previous column (and any other)
         };
         // Reuse the existing focus-movement command so behaviour (row carry,
         // camera recenter, events) stays identical to the keybinding path.

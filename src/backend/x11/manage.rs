@@ -413,9 +413,8 @@ impl WindowManager {
             } else {
                 // Capture emptiness BEFORE adding so we know whether to snap.
                 let was_empty = self.engine.state.monitors[mon_i].workspaces[ws_i].is_empty();
-                let wa_w = self.engine.state.monitors[mon_i].workarea.w;
                 self.engine.state.monitors[mon_i].workspaces[ws_i]
-                    .add_tiled(win, self.engine.cfg.default_col_w, wa_w);
+                    .add_tiled(win, self.engine.cfg.column_width);
                 let wa = self.engine.state.monitors[mon_i].workarea;
                 let fs = fs_ctx(
                     &self.engine.state.clients,

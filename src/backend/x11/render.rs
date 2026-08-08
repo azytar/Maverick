@@ -279,7 +279,8 @@ impl WindowManager {
     ///    most-recently-focused last → on top. In the `Column` layout an
     ///    ordinary fullscreen window is NOT an overlay (it scrolls with the
     ///    ribbon), so it is excluded here;
-    /// 2-bis. "fullscreen covering": when the focused window of a `Column`
+    ///
+    /// "fullscreen covering" (case 2-bis): when the focused window of a `Column`
     ///    workspace is fullscreen, the camera is settled and we are not in
     ///    Overview, the fullscreen tile is raised above *everything* (including
     ///    the dock/bar). The moment any of those conditions breaks it drops back
@@ -370,7 +371,7 @@ impl WindowManager {
                         .state
                         .clients
                         .get(&fw)
-                        .is_some_and(|c| c.is_float())
+                        .is_some_and(Client::is_float)
                 {
                     order.push(fw);
                 }
@@ -385,7 +386,7 @@ impl WindowManager {
             }
         }
 
-        if self.last_stack_order.get(&mon_idx).map_or(true, |prev| *prev != order) {
+        if self.last_stack_order.get(&mon_idx).is_none_or(|prev| *prev != order) {
             for &win in &order {
                 self.raise(win);
             }

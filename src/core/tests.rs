@@ -16,8 +16,7 @@ mod unit_tests {
             smart_gaps: false,
             corner_radius: 0,
             n_tags: 9,
-            default_col_w: 700,
-            split_bias: 0.6,
+            column_width: 0.6,
             focus_mouse: false,
             warp_cursor: false,
             accordion_boost: 0.30,
@@ -78,11 +77,9 @@ mod unit_tests {
         // register the client and add it to the active workspace's columns.
         let mi = engine.state.sel_mon;
         let ws_i = engine.state.monitors[mi].active_ws;
-        let wa_w = engine.state.monitors[mi].workarea.w;
         engine.state.monitors[mi].workspaces[ws_i].add_tiled(
             new_window_id,
-            (wa_w as f32 * engine.cfg.split_bias) as u32,
-            wa_w,
+            engine.cfg.column_width,
         );
         let mut client = Client::new(new_window_id, mi, ws_i);
         client.border_w = engine.cfg.border_w;
@@ -481,7 +478,7 @@ mod unit_tests {
         for i in 1..=n as u32 {
             let mi = engine.state.sel_mon;
             let ws_i = engine.state.monitors[mi].active_ws;
-            engine.state.monitors[mi].workspaces[ws_i].add_tiled(i, 960, 1920);
+            engine.state.monitors[mi].workspaces[ws_i].add_tiled(i, 0.5);
             let mut c = Client::new(i, mi, ws_i);
             c.border_w = engine.cfg.border_w;
             engine.state.add_client(c);
@@ -520,7 +517,7 @@ mod unit_tests {
         for i in 1..=4u32 {
             let mi = engine.state.sel_mon;
             let ws_i = engine.state.monitors[mi].active_ws;
-            engine.state.monitors[mi].workspaces[ws_i].add_tiled(i, 960, 1920);
+            engine.state.monitors[mi].workspaces[ws_i].add_tiled(i, 0.5);
             let mut c = Client::new(i, mi, ws_i);
             c.border_w = engine.cfg.border_w;
             engine.state.add_client(c);
@@ -575,7 +572,7 @@ mod unit_tests {
     fn test_new_column_single_window_keeps_full_width() {
         // N3: `NewColumn` on a workspace with a single tiled window must leave
         // that window's (sole) column with weight ~1.0, not a sub-0.1 sliver
-        // that the previous `default_col_w / wa.w * 0.3` fallback produced.
+        // that the previous column-width fallback produced.
         use crate::core::commands::{Command, NewColumn};
         use crate::types::Client;
         let mut engine = setup_engine();
@@ -585,7 +582,7 @@ mod unit_tests {
             .state
             .monitors[mi]
             .workspaces[ws_i]
-            .add_tiled(1, 1152, 1920);
+            .add_tiled(1, 0.6);
         engine.state.monitors[mi].focused = Some(1);
         engine.state.monitors[mi].focus_stack = vec![1];
         let mut c = Client::new(1, mi, ws_i);
@@ -617,7 +614,7 @@ mod unit_tests {
             .state
             .monitors[mi]
             .workspaces[ws_i]
-            .add_tiled(1, 960, 1920);
+            .add_tiled(1, 0.5);
         let mut c = Client::new(1, mi, ws_i);
         c.border_w = engine.cfg.border_w;
         engine.state.add_client(c);
@@ -655,7 +652,7 @@ mod unit_tests {
         for i in 1..=2u32 {
             let mi = engine.state.sel_mon;
             let ws_i = engine.state.monitors[mi].active_ws;
-            engine.state.monitors[mi].workspaces[ws_i].add_tiled(i, 960, 1920);
+            engine.state.monitors[mi].workspaces[ws_i].add_tiled(i, 0.5);
             let mut c = Client::new(i, mi, ws_i);
             c.border_w = engine.cfg.border_w;
             engine.state.add_client(c);
@@ -1422,7 +1419,7 @@ fn grow_column_does_not_panic_with_many_columns() {
             .state
             .monitors[mi]
             .workspaces[ws_i]
-            .add_tiled(w, (1920.0 / n as f32) as u32, 1920);
+            .add_tiled(w, 1.0 / n as f32);
         engine.state.add_client(Client::new(w, mi, ws_i));
     }
     // Grow both directions; previously panicked once 21+ columns were present.
@@ -1782,7 +1779,7 @@ fn fullscreen_topology_is_idempotent() {
             let ws = &mut engine.state.monitors[mi].workspaces[ws_i];
             ws.layout = LayoutKind::Column;
             for win in 1..=2u32 {
-                ws.add_tiled(win, cfg.default_col_w, 1920);
+                ws.add_tiled(win, cfg.column_width);
             }
         }
         // Column 0 → window 1 fullscreen (normal).
@@ -1848,7 +1845,7 @@ fn fullscreen_topology_is_idempotent() {
                 .state
                 .monitors[mi]
                 .workspaces[ws_i]
-                .add_tiled(win, cfg.default_col_w, 1920);
+                .add_tiled(win, cfg.column_width);
         }
 
         engine.dispatch(Action::ViewportZoom(0.2));
@@ -1890,7 +1887,7 @@ fn fullscreen_topology_is_idempotent() {
         engine.dispatch(Action::ViewportZoom(-0.5));
         let ws = &engine.state.monitors[mi].workspaces[ws_i];
         assert_eq!(ws.viewport_mode, ViewportMode::Normal);
-        assert_eq!(ws.page_zoom_target, 1.0);
+        assert!((ws.page_zoom_target - 1.0).abs() < 1e-6);
     }
 
     #[test]
@@ -1908,7 +1905,7 @@ fn fullscreen_topology_is_idempotent() {
                 .state
                 .monitors[mi]
                 .workspaces[ws_i]
-                .add_tiled(win, cfg.default_col_w, 1920);
+                .add_tiled(win, cfg.column_width);
         }
         // Start the camera at the left edge, then snap one page to the right.
         engine.state.monitors[mi].workspaces[ws_i].camera.target = 0.0;
@@ -1919,9 +1916,7 @@ fn fullscreen_topology_is_idempotent() {
         let expected_step = wa.w as f32; // alpha = 1.0 → one screen-width page
         assert!(
             after > before && after <= expected_step + 1.0,
-            "PageSnap right must scroll the camera forward by one page (~{}): got {}",
-            expected_step,
-            after
+            "PageSnap right must scroll the camera forward by one page (~{expected_step}): got {after}"
         );
     }
 

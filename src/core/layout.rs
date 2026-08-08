@@ -142,7 +142,11 @@ pub struct FsCtx {
 /// disagree about where the ribbon's fullscreen column sits. Their fullscreen
 /// is an exclusive overlay outside the ribbon (`core::present`), so as far as
 /// the ribbon is concerned they are still in their ordinary tile.
-pub fn fs_ctx(clients: &HashMap<WindowId, Client>, ws: &Workspace, screen: Rect) -> FsCtx {
+pub fn fs_ctx(
+    clients: &HashMap<WindowId, Client, impl std::hash::BuildHasher>,
+    ws: &Workspace,
+    screen: Rect,
+) -> FsCtx {
     if ws.layout != LayoutKind::Column || ws.overview {
         return FsCtx::default();
     }

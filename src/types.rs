@@ -123,8 +123,8 @@ pub struct SizeHints {
 // total width of all columns simply grows or shrinks, and `camera` scrolls
 // to keep the focused column in view (see `ideal_scroll`).
 //
-// New columns are inserted at `cfg.default_col_w` (converted to a fraction of
-// the workarea) rather than stealing space from the currently focused column.
+// New columns are inserted at `cfg.column_width` (a fraction of the
+// workarea) rather than stealing space from the currently focused column.
 //
 // This means coordinates are ALWAYS derived from (col_x + scroll, row_y)
 // and never stored as mutable state — no drift possible.
@@ -144,9 +144,10 @@ pub struct Column {
 
 impl Column {
     pub fn new(weight: f32) -> Self {
-        let mut c = Column::default();
-        c.weight = weight;
-        c
+        Column {
+            weight,
+            ..Default::default()
+        }
     }
     pub fn focused_win(&self) -> Option<WindowId> {
         self.windows.get(self.focused).copied()
@@ -288,19 +289,14 @@ impl Workspace {
 
     /// True-scroll insert: a new window becomes a sibling column inserted to
     /// the RIGHT of the focused column (or as the sole column when the
-    /// workspace is empty), at the configured default column width. The width is
-    /// `default_col_w / workarea_w` — a fixed fraction of the screen, *independent
-    /// of how many columns already exist* (bug C16): adding a column no longer
-    /// shrinks the others. Existing columns keep whatever width they already had;
-    /// the workspace simply gets wider and `camera` scrolls to bring the new
-    /// column into view. This is what makes it a *scrolling* layout instead of a
-    /// fit-to-screen accordion, and it unifies every "new column" path on one
-    /// policy (bug C14).
-    pub fn add_tiled(&mut self, window: WindowId, default_col_w: u32, workarea_w: u32) {
-        let w = if workarea_w == 0 {
+    /// workspace is empty), at the configured `column_width` (a fraction of the
+    /// workarea, 0.1–1.0). The fraction is taken directly — callers pass
+    /// `cfg.column_width`; no division happens here (T5).
+    pub fn add_tiled(&mut self, window: WindowId, column_width: f32) {
+        let w = if column_width <= 0.0 {
             1.0
         } else {
-            (default_col_w as f32 / workarea_w as f32).clamp(0.1, 1.0)
+            column_width.clamp(0.1, 1.0)
         };
         if self.columns.is_empty() {
             let mut col = Column::new(1.0); // sole column owns the full workarea width
@@ -768,7 +764,7 @@ pub enum ViewportMode {
     Zoomed,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Spawn(Vec<String>),
     Kill,

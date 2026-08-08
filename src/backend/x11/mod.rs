@@ -2,6 +2,7 @@
 // Window manager core — niri-style columnar layout, clean coords.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::time::Instant;
 use x11rb::connection::Connection;
 use x11rb::errors::ConnectionError;
@@ -59,6 +60,12 @@ pub struct WindowManager {
     control: Option<maverick_sys::ControlServer>,
     /// Instance name passed via --name (for identity/control).
     instance_name: String,
+    /// Config file path that was loaded at boot (the --config override when
+    /// given, otherwise the resolved XDG path, or `None` when the compiled
+    /// defaults were used). `reload_config` re-reads this exact file (B10/T7):
+    /// the override must survive a reload, not be silently replaced by the
+    /// XDG default.
+    config_path: Option<PathBuf>,
     /// Bridge to the control-socket thread: drains dispatched commands, publishes
     /// state snapshots, and emits events for `subscribe` clients.
     hub: Option<maverick_sys::ControlHub>,
@@ -89,7 +96,7 @@ pub struct WindowManager {
     /// frame-clock timeout (high rate while animating, idle 100ms otherwise).
     animating: bool,
     /// Count of unmap operations the WM itself initiated. X11 delivers the WM
-    /// its own `UnmapNotify` back (SubstructureNotify on root), and without
+    /// its own `UnmapNotify` back (`SubstructureNotify` on root), and without
     /// this counter `on_unmap` would treat that self-unmap as the client
     /// withdrawing and unmanage the window — permanently deleting it (see bug
     /// C1). Incremented before every `unmap_window` the WM performs;
@@ -256,7 +263,11 @@ impl WindowManager {
         }
         Ok(())
     }
-    pub fn new(cfg: Cfg, replace: bool) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        cfg: Cfg,
+        replace: bool,
+        config_path: Option<PathBuf>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let (conn, screen_num) = RustConnection::connect(None)?;
         let screen = &conn.setup().roots[screen_num];
         let root = screen.root;
@@ -329,6 +340,7 @@ impl WindowManager {
             last_key_times: std::collections::BTreeMap::new(),
             control: None,
             instance_name: String::new(),
+            config_path,
             hub: None,
             last_state_json: String::new(),
             docks: std::collections::HashMap::new(),
@@ -497,10 +509,13 @@ fn detect_monitors(
 }
 
 fn build_keymap(cfg: &Cfg) -> BTreeMap<(u16, u32), Action> {
-    cfg.keybinds
-        .iter()
-        .map(|(m, k, a)| ((*m, *k), a.clone()))
-        .collect()
+    let mut map = BTreeMap::new();
+    for (m, k, a) in &cfg.keybinds {
+        // First wins: a later duplicate `(mods, keysym)` does not overwrite the
+        // earlier one (B7). Mirrors the conflict policy in `parse_keybindings`.
+        map.entry((*m, *k)).or_insert_with(|| a.clone());
+    }
+    map
 }
 
 /// Result of a pipelined keyboard+modifier state fetch.

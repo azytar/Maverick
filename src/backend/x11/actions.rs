@@ -171,11 +171,19 @@ impl WindowManager {
     /// is reconciled (grown/truncated) before the new keymap is grabbed and
     /// everything is re-arranged.
     pub(super) fn reload_config(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let Some(path) = crate::userconfig::config_path() else {
-            log::warn!("reload: no XDG config path available; keeping current config");
+        // Re-read the same file we booted from: the `--config` override (stored
+        // on `self.config_path`) must survive a reload, not be replaced by the
+        // XDG default. Fall back to the XDG path only when no override was set.
+        let Some(path) = self
+            .config_path
+            .clone()
+            .or_else(crate::userconfig::config_path)
+        else {
+            log::warn!("reload: no config path available; keeping current config");
             return Ok(());
         };
-        let cfg = crate::userconfig::load_from_path(&path);
+        let (cfg, diag) = crate::userconfig::load_from_path(&path);
+        crate::userconfig::dump_diagnostics(&diag);
 
         let tags_changed =
             cfg.n_tags != self.engine.cfg.n_tags || cfg.tag_names != self.engine.cfg.tag_names;
@@ -185,7 +193,7 @@ impl WindowManager {
                 mon.reconcile_workspaces(cfg.n_tags);
             }
             let n_tags = cfg.n_tags;
-            for (&win, client) in self.engine.state.clients.iter_mut() {
+            for (&win, client) in &mut self.engine.state.clients {
                 if client.workspace >= n_tags {
                     client.workspace = n_tags.saturating_sub(1);
                     clamped_wins.push(win);

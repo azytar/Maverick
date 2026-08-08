@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::types::{Action, Dir, LayoutKind};
 
 #[derive(Debug, Clone)]
@@ -12,11 +14,10 @@ pub struct Cfg {
     /// Rounded corner radius in pixels, via X11 Shape. 0 disables.
     pub corner_radius: u32,
     pub n_tags: usize,
-    pub default_col_w: u32, // default width of a new column
-    pub split_bias: f32, // width fraction of the workarea given to a *new* column
-                          // created by the WM (MoveToWorkspace, ToggleFloat, drop-to-tile,
-                          // and splitting a focused window into its own column). 0.0-1.0;
-                          // unrelated to per-row height.
+    /// Width of a freshly created column, as a fraction (0.1–1.0) of the
+    /// workarea. Replaces the old `default_col_w` (pixels) and `split_bias`
+    /// (fraction) keys, which are now deprecated aliases (B3, T5).
+    pub column_width: f32,
     pub focus_mouse: bool,
     pub warp_cursor: bool,
     /// Accordion factor: extra fraction (0.0-0.9) the focused column expands
@@ -55,8 +56,7 @@ impl Default for Cfg {
             smart_gaps: false,
             corner_radius: 0,
             n_tags: 9,
-            default_col_w: 700,
-            split_bias: 0.6,
+            column_width: 0.6,
             focus_mouse: false,
             warp_cursor: false,
             accordion_boost: 0.0,
@@ -102,7 +102,7 @@ pub struct Rule {
     /// them) are the classic offender — they remember being maximized from
     /// the last session and demand it back on every launch, which on a
     /// tiling WM just means "fill the workarea, no gaps, no matter what
-    /// you tiled last." Apple's WindowServer never lets an app dictate its
+    /// you tiled last." Apple's `WindowServer` never lets an app dictate its
     /// own launch geometry like that; this rule does the same.
     pub ignore_initial_state: bool,
     /// Refuse this app's *own* fullscreen requests at runtime. An EWMH
@@ -172,7 +172,7 @@ pub fn compiled_config() -> Cfg {
         };
     }
 
-    let mut keybinds: Vec<(u16, u32, Action)> = vec![
+    let keybinds: Vec<(u16, u32, Action)> = vec![
         // ── spawn ──
         (sup, XK_RETURN, Action::Spawn(vec!["alacritty".into()])),
         (
@@ -229,7 +229,7 @@ pub fn compiled_config() -> Cfg {
         // ── Overview (semantic-zoom film-strip) ──
         (sup, k!(b'o'), Action::ToggleOverview),
         (sup, k!(b'n'), Action::OverviewNav(Dir::Right)),
-        (sup, k!(b'p'), Action::OverviewNav(Dir::Left)),
+        (shs, k!(b'o'), Action::OverviewNav(Dir::Left)),
         (sup, k!(b'e'), Action::OverviewEnter),
         // ── Viewport (zoom-in inspection + page-snap scrolling) ──
         (sup, XK_EQUAL, Action::ViewportZoom(0.2)), // Mod4+=  zoom viewport in
@@ -238,45 +238,7 @@ pub fn compiled_config() -> Cfg {
         (sup, XK_BRACKETLEFT, Action::PageSnap(Dir::Left)),    // Mod4+[  scroll one page left
     ];
 
-    // ── workspace keybinds: Super+1..9 view, Super+Shift+1..9 move ──
-    let ws_keys: [(u32, usize); 9] = [
-        (k!(b'1'), 0),
-        (k!(b'2'), 1),
-        (k!(b'3'), 2),
-        (k!(b'4'), 3),
-        (k!(b'5'), 4),
-        (k!(b'6'), 5),
-        (k!(b'7'), 6),
-        (k!(b'8'), 7),
-        (k!(b'9'), 8),
-    ];
-    for (ksym, ws) in ws_keys {
-        keybinds.push((sup, ksym, Action::View(ws)));
-        keybinds.push((shs, ksym, Action::MoveToWs(ws)));
-    }
-
         Cfg {
-        border_w: 2,
-        gaps_inner: 6,
-        gaps_outer: 6,
-        smart_gaps: false,
-        corner_radius: 0,
-        n_tags: 9,
-        default_col_w: 700,
-        split_bias: 0.6,
-        focus_mouse: false,
-        warp_cursor: false,
-
-        // Catppuccin Mocha palette
-        col_normal: 0x45475a,  // Surface1
-        col_focused: 0x89b4fa, // Blue
-        col_urgent: 0xf38ba8,  // Red
-
-        accordion_boost: 0.0,
-        overview_zoom_min: 0.25,
-
-        tag_names: (1..=9).map(|n| n.to_string()).collect(),
-
         keybinds,
 
                 rules: vec![
@@ -372,15 +334,16 @@ pub fn compiled_config() -> Cfg {
             // Set your own wallpaper here, e.g.:
             // vec!["feh".into(), "--bg-fill".into(), "/path/to/wallpaper.png".into()],
         ],
+        ..Default::default()
     }
 }
 
 /// Build the runtime config: the compiled baseline, with an optional user
-/// TOML (`$XDG_CONFIG_HOME/maverick/config.toml`) layered on top. A missing or
-/// invalid TOML never prevents startup — see `userconfig` for the fail-safe
-/// loading rules.
-pub fn load_config() -> Cfg {
-    crate::userconfig::load_config()
+/// TOML layered on top. `path` overrides the default XDG location (used by the
+/// `--config` CLI flag). A missing or invalid TOML never prevents startup —
+/// see `userconfig` for the fail-safe loading rules.
+pub fn load_config(path: Option<&Path>) -> Cfg {
+    crate::userconfig::load_config(path)
 }
 
 /// Named color-theme presets for `[general].theme` in the TOML config.

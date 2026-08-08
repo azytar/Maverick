@@ -5,6 +5,24 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Default column width is now a fraction of the workarea, not pixels
+  (BREAKING VISUAL).** The old `default_col_w = 700` (pixels) and `split_bias`
+  keys are deprecated aliases for the new `column_width` (a fraction `0.1–1.0`
+  of the workarea width, default `0.6`). `700px` on a 1920px-wide screen was
+  ~0.36; the new default `0.6` makes fresh columns noticeably wider. Migration:
+  set `column_width` explicitly in `[general]`, or keep `default_col_w` (converted
+  via a 1920px fallback) / `split_bias` for now — both emit a deprecation
+  warning.
+- **fase 0 bug-fix batch (B1–B12).** Unified TOML/IPC action vocabulary
+  (`core::action`); workspace binds are auto-generated and only claim the slots
+  you override (`auto_workspace_binds`); first-wins keybinding conflict policy;
+  X11 keysym lookup fixed to column 0 with a shifted-column fallback; expanded
+  keysym name table (F-keys, keypad, XF86 media/brightness, symbol keys) with a
+  `0x<hex>` escape; `--config <path>` and `--check-config [path]` CLI flags.
+  Config is never fatal: diagnostics are logged and startup proceeds.
+
 ### Added
 
 - **(sin confirmar) `Rule::ignore_initial_state` — modo "Apple" contra apps

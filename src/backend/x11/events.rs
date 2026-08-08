@@ -286,9 +286,8 @@ impl WindowManager {
                                 .floats
                                 .push(*win);
                         } else {
-                            let wa_w = self.engine.state.monitors[target].workarea.w;
                             self.engine.state.monitors[target].workspaces[ws_i]
-                                .add_tiled(*win, self.engine.cfg.default_col_w, wa_w);
+                                .add_tiled(*win, self.engine.cfg.column_width);
                         }
                     }
                 }
@@ -463,11 +462,23 @@ impl WindowManager {
 
     pub(super) fn on_key(&mut self, e: KeyPressEvent) -> Result<(), Box<dyn std::error::Error>> {
         self.last_event_time = e.time;
-        let ksym = self.keycode_to_keysym(e.detail, u16::from(e.state))?;
-        let ksym = normalize_ksym(ksym);
         let mods = clean_mask(u16::from(e.state), self.numlock);
+        // Primary lookup uses the column-0 keysym (B6). Shift/Lock travel only in
+        // `mods`, so `Mod4+Shift+bracketleft` resolves to the bound keysym.
+        let ksym = normalize_ksym(self.keycode_to_keysym(e.detail, u16::from(e.state))?);
         let key = (mods, ksym);
-        if let Some(action) = self.keymap.get(&key).cloned() {
+        let action = if let Some(a) = self.keymap.get(&key).cloned() {
+            Some(a)
+        } else {
+            // Fallback to the shifted/locked column: anyone who relied on the
+            // old shifted-only resolution still works (B6).
+            let shift = u16::from(e.state) & u16::from(ModMask::SHIFT) != 0;
+            let lock = u16::from(e.state) & u16::from(ModMask::LOCK) != 0;
+            let col = usize::from(shift ^ lock).min(self.raw_kpk.saturating_sub(1));
+            let ksym_shifted = normalize_ksym(self.keysym_at_col(e.detail, col));
+            self.keymap.get(&(mods, ksym_shifted)).cloned()
+        };
+        if let Some(action) = action {
             let min_interval = match action {
                 Action::Spawn(_) => std::time::Duration::from_millis(200),
                 _ => std::time::Duration::from_millis(60),

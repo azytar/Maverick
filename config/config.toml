@@ -5,14 +5,18 @@
 # Every key is OPTIONAL: anything you omit falls back to the compiled-in
 # defaults. If you define a section it is *merged* (it overrides only the
 # fields you set); if you define [[keybindings]] or [[rules]] they REPLACE the
-# compiled lists entirely (numeric workspace binds 1..9 are re-added
-# automatically if your keybindings contain no digit keys).
+# compiled lists entirely.
 #
-# Key names accepted in TOML are limited to: a–z, 0–9, F1–F12, Return/Enter,
-# Space, Tab. Modifiers: Super/Mod4, Shift, Control/Ctrl, Alt/Mod1.
-# (The compiled defaults use raw symbols like Mod4+= / Mod4+[ for the viewport
-# actions — those are not reachable by name from TOML, hence the letter
-# fallbacks used below.)
+# Numeric workspace binds (Super+1..9 → view, Super+Shift+1..9 → move) are
+# generated automatically unless `auto_workspace_binds = false`. If you define a
+# `[[keybindings]]` entry on a digit key, that slot is claimed by your binding
+# and the remaining auto-generated binds are kept (no full suppression).
+#
+# Key names accepted in TOML: a–z, 0–9, F1–F12, Return/Enter, Space, Tab,
+# bracketleft/right, equal, minus, plus, comma, period, slash, and any XF86
+# name (e.g. XF86AudioRaiseVolume, XF86MonBrightnessUp). A raw keysym may be
+# given as a `0x<hex>` escape (e.g. `Mod4+0x21` for Exclam). Modifiers:
+# Super/Mod4, Shift, Control/Ctrl, Alt/Mod1.
 # ─────────────────────────────────────────────────────────────────────────────
 
 [general]
@@ -31,11 +35,22 @@ corner_radius = 0
 # Number of workspaces (tags). 1..=9 are bound to Mod4+1..9 by default.
 n_tags = 9
 
-# Default column width (px) for a freshly created column in the Column layout.
-default_col_width = 700
+# Width of a freshly created column, as a fraction (0.1–1.0) of the workarea
+# width. Replaces the old `default_col_width` (pixels) and `split_bias`
+# (fraction) keys, which are now deprecated aliases.
+column_width = 0.6
 
-# Accordion bias (0.0–0.9): how much the focused column grows vs the others.
-split_bias = 0.6
+# Accordion focus-expansion factor (0.0–0.9): extra fraction the focused column
+# grows when dynamic focus expansion is active. 0.0 disables it (default), so a
+# column only resizes via GrowColumn/ShrinkColumn.
+accordion_boost = 0.0
+
+# Minimum zoom factor for the Overview film-strip (0.05–1.0).
+overview_zoom_min = 0.25
+
+# Auto-generate the Super+1..9 / Super+Shift+1..9 workspace binds. Set to false
+# to manage all workspace switching yourself (default true).
+auto_workspace_binds = true
 
 # Focus follows the mouse pointer.
 focus_mouse = false
@@ -187,9 +202,9 @@ action = "overview_nav:left"
 key = "Mod4+e"
 action = "overview_enter"
 
-# Viewport zoom / page-snap. The compiled defaults use the raw symbols
-# Mod4+= / Mod4+- / Mod4+] / Mod4+[ — those names are not parseable from TOML,
-# so here we bind them to letters instead.
+# Viewport zoom / page-snap. These can be bound by their real symbol names
+# (Mod4+equal, Mod4+minus, Mod4+bracketright, Mod4+bracketleft) or an XF86
+# name; the letter bindings below are just convenient alternatives.
 [[keybindings]]
 key = "Mod4+z"
 action = "viewport_zoom:0.2"     # zoom the ribbon in (alpha > 1)

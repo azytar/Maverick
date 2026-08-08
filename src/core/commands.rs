@@ -74,9 +74,8 @@ pub fn apply_fullscreen_topology(
         if !client.is_float() {
             return false;
         }
-        let wa_w = state.monitors[mi].workarea.w;
         state.monitors[mi].workspaces[ws_i].remove_window(win);
-        state.monitors[mi].workspaces[ws_i].add_tiled(win, cfg.default_col_w, wa_w);
+        state.monitors[mi].workspaces[ws_i].add_tiled(win, cfg.column_width);
         if let Some(c) = state.clients.get_mut(&win) {
             // Snapshot the *float* rect here, while it is still the live
             // geometry. `arrange` overwrites `geom` with the tile rect as soon
@@ -380,10 +379,9 @@ impl Command for ToggleFloat {
         let win = match state.monitors[mi].focused { Some(w) => w, None => return CommandReport::new(cmds) };
         let is_float = state.clients.get(&win).is_some_and(crate::types::Client::is_float);
         if ws_i >= state.monitors[mi].workspaces.len() { return CommandReport::new(cmds); }
-        let wa_w = state.monitors[mi].workarea.w;
         if is_float {
             state.monitors[mi].workspaces[ws_i].remove_window(win);
-            state.monitors[mi].workspaces[ws_i].add_tiled(win, cfg.default_col_w, wa_w);
+            state.monitors[mi].workspaces[ws_i].add_tiled(win, cfg.column_width);
             if let Some(c) = state.clients.get_mut(&win) { c.flags.clear(WinFlags::FLOAT); }
         } else {
             state.monitors[mi].workspaces[ws_i].remove_window(win);
@@ -559,7 +557,6 @@ impl Command for MoveToWorkspace {
         let ws_idx = self.0;
         if src_ws == ws_idx || ws_idx >= state.monitors[mi].workspaces.len() { return CommandReport::new(cmds); }
         let is_float = state.clients.get(&win).is_some_and(crate::types::Client::is_float);
-        let dst_wa_w = state.monitors[mi].workarea.w;
         state.monitors[mi].workspaces[src_ws].remove_window(win);
         state.monitors[mi].focus_stack.retain(|&w| w != win);
         if state.monitors[mi].focused == Some(win) {
@@ -569,7 +566,7 @@ impl Command for MoveToWorkspace {
             state.monitors[mi].workspaces[ws_idx].floats.push(win);
         } else {
             state.monitors[mi].workspaces[ws_idx].remove_window(win);
-            state.monitors[mi].workspaces[ws_idx].add_tiled(win, cfg.default_col_w, dst_wa_w);
+            state.monitors[mi].workspaces[ws_idx].add_tiled(win, cfg.column_width);
         }
         if let Some(c) = state.clients.get_mut(&win) { c.workspace = ws_idx; }
         // The source workspace just lost a column: recenter its camera so it
@@ -658,17 +655,14 @@ impl Command for NewColumn {
         };
         
         // Unified "new column" policy (bug C14): the split-out window becomes a
-        // sibling column at the configured `default_col_w` (a fraction of the
+        // sibling column at the configured `column_width` (a fraction of the
         // workarea), independent of how many columns already exist. The
         // surviving column keeps its own width — no stealing, no 70/30
         // fit-to-screen split. If pulling the window out emptied the only
         // column, the new column is the sole one and fills the whole workarea
         // (weight 1.0) instead of a sub-0.1 sliver of the default width (N3).
         let new_w = match survivor_w {
-            Some(_) => {
-                let waw = wa.w as f32;
-                (cfg.default_col_w as f32 / waw).clamp(0.1, 1.0)
-            }
+            Some(_) => cfg.column_width,
             None => 1.0,
         };
 
@@ -789,8 +783,7 @@ impl Command for MoveWindowToMonitor {
         if is_float {
             state.monitors[new_mi].workspaces[dst_ws].floats.push(win);
         } else {
-            let dst_wa_w = state.monitors[new_mi].workarea.w;
-            state.monitors[new_mi].workspaces[dst_ws].add_tiled(win, cfg.default_col_w, dst_wa_w);
+            state.monitors[new_mi].workspaces[dst_ws].add_tiled(win, cfg.column_width);
         }
         state.monitors[mi].focus_stack.retain(|&w| w != win);
         if state.monitors[mi].focused == Some(win) {
@@ -962,7 +955,7 @@ impl Command for OverviewNav {
         // Overview navigation must also move the real input focus to the window
         // we just selected, otherwise the keyboard keeps going to the previous
         // window and `ws.focus.column_idx` desyncs from `mon.focused` (bug C4).
-        if let Some(w) = ws.columns.get(new).and_then(|c| c.focused_win()) {
+        if let Some(w) = ws.columns.get(new).and_then(Column::focused_win) {
             cmds.push(Effect::FocusWindow(Some(w)));
         }
         CommandReport::with_event(
@@ -1003,7 +996,7 @@ impl Command for OverviewEnter {
         cmds.push(Effect::ArrangeMonitor(mi));
         // "Enter" drops into the selected column: move the real focus there too,
         // so the key window matches `ws.focus.column_idx` (bug C4).
-        if let Some(w) = ws.columns.get(ws.focus.column_idx).and_then(|c| c.focused_win()) {
+        if let Some(w) = ws.columns.get(ws.focus.column_idx).and_then(Column::focused_win) {
             cmds.push(Effect::FocusWindow(Some(w)));
         }
         CommandReport::with_event(

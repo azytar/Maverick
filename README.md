@@ -204,11 +204,11 @@ whole and the compiled defaults are used, while a wrong-typed value, unknown
 key name or broken action string is dropped with a warning and the rest of
 the file still loads. Maverick never fails to start because of a bad config.
 
-There's a full, commented example at [`examples/config.toml`](examples/config.toml):
+There's a full, commented example at [`config/config.toml`](config/config.toml):
 
 ```bash
 mkdir -p ~/.config/maverick
-cp examples/config.toml ~/.config/maverick/config.toml
+cp config/config.toml ~/.config/maverick/config.toml
 ```
 
 ```toml
@@ -252,17 +252,21 @@ nothing changes from before.
 ### Core Options
 
 ```rust
-border_w:      2,      // border width in pixels
-gaps:          6,      // gap between windows and screen edges (px)
-n_tags:        9,      // number of workspaces
-default_col_w: 700,    // default column width when created (px)
-split_bias:    0.6,    // focused-row size bonus in a split column (0.0–1.0)
-focus_mouse:   false,  // focus window on mouse enter
-warp_cursor:   false,  // warp cursor to focused window center
-
+border_w:       2,        // border width in pixels
+gaps:           6,        // gap between windows and screen edges (px)
+n_tags:         9,        // number of workspaces
+column_width:   0.6,      // width of a freshly created column, as a
+                          //   fraction (0.1–1.0) of the workarea width
+accordion_boost: 0.0,     // focus-expansion factor for the focused column (0.0–0.9)
+overview_zoom_min: 0.25,  // minimum Overview film-strip zoom (0.05–1.0)
+focus_mouse:    false,    // focus window on mouse enter
+warp_cursor:    false,    // warp cursor to focused window center
+auto_workspace_binds: true, // auto-generate Super+1..9 / Super+Shift+1..9
 ```
 
-**`split_bias`** controls how much taller the focused window is compared to its siblings within a split column. `0.0` = equal heights, `1.0` = maximum bias.
+`column_width` is the fraction of the workarea given to a newly created
+column (0.1–1.0). It replaces the old `default_col_w` (pixels) and
+`split_bias` keys, which are now deprecated aliases that map onto it.
 
 ### Colors
 

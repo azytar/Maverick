@@ -127,7 +127,7 @@ mod tests {
         let mut c = Client::new(win, 0, 0);
         c.geom = Rect::new(0, 0, 100, 100);
         state.add_client(c);
-        state.monitors[0].workspaces[0].add_tiled(win, 400, 800);
+        state.monitors[0].workspaces[0].add_tiled(win, 0.5);
     }
 
     #[test]
