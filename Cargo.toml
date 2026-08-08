@@ -1,0 +1,35 @@
+[workspace]
+members = ["maverick-sys", "maverick-dialog", "maverick-toml"]
+resolver = "2"
+
+[package]
+name = "maverick"
+version = "0.18.4"
+edition = "2021"
+rust-version = "1.82"
+authors = ["azytar"]
+description = "maverick — columnar tiling WM with niri-style layout"
+license = "GPL-3.0"
+repository = "https://github.com/azytar/Maverick"
+categories = ["command-line-utilities", "gui"]
+keywords = ["window-manager", "tiling", "x11"]
+
+[[bin]]
+name = "maverick"
+path = "src/main.rs"
+
+[dependencies]
+maverick-sys = { path = "maverick-sys" }
+maverick-toml = { path = "maverick-toml" }
+libc = "0.2"
+x11rb = { version = "0.13", default-features = false, features = ["randr", "shape"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
