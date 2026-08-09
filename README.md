@@ -56,18 +56,16 @@ no cairo, no pango, no Xft. What you need is:
 | Requirement | Why | Typical package |
 | --- | --- | --- |
 | An X11 server | Maverick is X11-only, no Wayland | `xorg-server` (Arch), or [XLibre](https://github.com/X11Libre/xserver) |
-| `cargo` / Rust toolchain, **only if building from source** | Compiles the workspace | `rustup` (MSRV 1.82) or your distro's `rustc`/`cargo` package |
+| `cargo` / Rust toolchain | Both the installer and a manual build compile the workspace with it | `rustup` (MSRV 1.82) or your distro's `rustc`/`cargo` package |
 | A terminal, launcher, bar, wallpaper setter, notification daemon, etc. | Not bundled — Maverick starts them via `autostart`, same as any WM | `alacritty`/`rofi`/`polybar`/`feh`/`dunst` or your own picks |
 | `xdg-desktop-portal` + `xdg-desktop-portal-gtk` (recommended) | GTK/Electron apps' file pickers | ships in the default `autostart` |
 
-If you're using the **prebuilt installer binary** below, `cargo` is not
-required at all — only the X server.
-
 ### Option A: `maverick-installer.bin` (recommended for most people)
 
-A prebuilt, statically-runnable installer binary ships at the repo root.
-It clones nothing extra and needs no manual `cargo` invocation — clone
-the repo, run the binary, done:
+A prebuilt installer binary ships at the repo root, so you don't need to
+build the installer itself — but it still needs `cargo`/`rustc` on the
+system to build Maverick, same as a manual build. Clone, run the binary,
+done:
 
 ```bash
 git clone https://github.com/azytar/Maverick.git
@@ -80,11 +78,9 @@ What it does:
 1. Detects your CPU (via `CPUID`) and reports it.
 2. Picks an install target: `/usr/local/bin` under `sudo`/root, or
    `~/.local/bin` if run as a regular user.
-3. Builds the workspace itself with `cargo build --release
-   -C target-cpu=native` (using the [`mold`](https://github.com/rui314/mold)
-   linker automatically if it's on `PATH`, for a faster link step) — so
-   `cargo`/`rustc` still needs to be installed *somewhere* on the system;
-   the installer drives the build, it doesn't replace the toolchain.
+3. Builds the workspace with `cargo build --release -C target-cpu=native`
+   (using the [`mold`](https://github.com/rui314/mold) linker
+   automatically if it's on `PATH`, for a faster link step).
 4. Copies `maverick`, `maverickctl`, `maverick-msg`, and `maverick-dialog`
    into the install target.
 5. Checks that the install target is on `$PATH` and installs

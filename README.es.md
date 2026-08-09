@@ -57,18 +57,16 @@ necesitas es:
 | Requisito | Para qué | Paquete típico |
 | --- | --- | --- |
 | Un servidor X11 | Maverick es solo X11, sin Wayland | `xorg-server` (Arch), o [XLibre](https://github.com/X11Libre/xserver) |
-| `cargo` / toolchain de Rust, **solo si compilas desde las fuentes** | Compila el workspace | `rustup` (MSRV 1.82) o el paquete `rustc`/`cargo` de tu distro |
+| `cargo` / toolchain de Rust | Tanto el instalador como una compilación manual lo usan para compilar el workspace | `rustup` (MSRV 1.82) o el paquete `rustc`/`cargo` de tu distro |
 | Terminal, lanzador, barra, fondo de pantalla, demonio de notificaciones, etc. | No vienen incluidos — Maverick los arranca vía `autostart`, como cualquier WM | `alacritty`/`rofi`/`polybar`/`feh`/`dunst` o los que prefieras |
 | `xdg-desktop-portal` + `xdg-desktop-portal-gtk` (recomendado) | Selectores de archivo de apps GTK/Electron | vienen en el `autostart` por defecto |
 
-Si usas el **binario del instalador precompilado** de abajo, no necesitas
-`cargo` en absoluto — solo el servidor X.
-
 ### Opción A: `maverick-installer.bin` (recomendado para la mayoría)
 
-En la raíz del repo viene un binario instalador precompilado, listo para
-ejecutar. No necesita invocar `cargo` a mano — clona el repo, ejecuta el
-binario, listo:
+En la raíz del repo viene un binario instalador precompilado, así que no
+hace falta compilar el instalador en sí — pero igual necesita
+`cargo`/`rustc` en el sistema para compilar Maverick, igual que una
+compilación manual. Clona, ejecuta el binario, listo:
 
 ```bash
 git clone https://github.com/azytar/Maverick.git
@@ -81,12 +79,9 @@ Qué hace:
 1. Detecta tu CPU (vía `CPUID`) y la reporta.
 2. Elige un destino de instalación: `/usr/local/bin` bajo `sudo`/root, o
    `~/.local/bin` si se ejecuta como usuario normal.
-3. Compila el workspace él mismo con `cargo build --release
-   -C target-cpu=native` (usando el enlazador
-   [`mold`](https://github.com/rui314/mold) automáticamente si está en el
-   `PATH`, para un enlazado más rápido) — así que `cargo`/`rustc` igual
-   necesita estar instalado en el sistema; el instalador conduce la
-   compilación, no reemplaza el toolchain.
+3. Compila el workspace con `cargo build --release -C target-cpu=native`
+   (usando el enlazador [`mold`](https://github.com/rui314/mold)
+   automáticamente si está en el `PATH`, para un enlazado más rápido).
 4. Copia `maverick`, `maverickctl`, `maverick-msg` y `maverick-dialog` al
    destino de instalación.
 5. Verifica que el destino esté en el `$PATH` e instala
