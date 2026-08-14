@@ -26,7 +26,7 @@ Design priorities:
 - Explicit ownership of applied geometry, with invariants checked at runtime, to
   avoid divergence between the logical layout and the actual X11 window
   positions.
-- A built-in compositor so no external compositor (picom, xcompmgr) is required
+- A built-in compositor, so no external compositor is required
   for translucency, rounded corners, or a drawn wallpaper.
 
 ## Features
@@ -71,8 +71,7 @@ Design priorities:
 Maverick ships two layout modes, switchable at runtime and tracked **per
 workspace**.
 
-- **Column** (default): a horizontally scrollable ribbon of columns, influenced
-  by niri's scrollable approach. Each column has a `weight` expressed as a
+- **Column** (default): a horizontally scrollable ribbon of columns. Each column has a `weight` expressed as a
   fraction of the workarea width; adding, growing, or removing a column does not
   resize its neighbours. A spring-driven camera scrolls the ribbon to keep the
   focused column centred. An optional *accordion* factor can expand the focused
@@ -158,7 +157,7 @@ Maverick exposes a control plane over a Unix socket. Two thin clients share one
 engine:
 
 - **`maverickctl`** — the general-purpose administration and query tool.
-- **`maverick-msg`** — a verbatim command forwarder (dwm-style): any line it
+- **`maverick-msg`** — a verbatim command forwarder: any line it
   receives is forwarded to the control socket's `dispatch` action.
 
 Both talk to a per-instance control server implementing the protocol commands:
@@ -228,8 +227,7 @@ change is:
   without changing the core.
 - The **Reconciler** (`backend/x11/reconciler.rs`) is the single owner of "what
   is actually on X11". It decides whether a `ConfigureWindow` (or restack/focus)
-  is actually needed, replacing change-detection that used to be duplicated
-  across modules.
+  is actually needed, centralizing applied-state change detection.
 - Maverick keeps **explicit state ownership and invariants**:
   `State::check_invariants()` verifies internal consistency, and runtime geometry
   is always reconstructed against the windows that are actually alive rather than
@@ -242,8 +240,7 @@ change is:
 
 ## Requirements
 
-- A Linux (or other X11-compatible) system with an **X server** (X.Org or
-  XLibre). Maverick is an X11 window manager, not a standalone display server.
+- A Linux (or other X11-compatible) system with an **X server** (such as X.Org). Maverick is an X11 window manager, not a standalone display server.
 - A **Rust toolchain**, MSRV **1.82** (`rust-version` in `Cargo.toml`), and
   Cargo.
 - The system **X11 and X11-xcb client libraries** are linked by the GLX FFI
@@ -314,6 +311,7 @@ Validate a config before starting:
 ```bash
 maverick --check-config ~/.config/maverick/config.toml
 maverick --config ~/.config/maverick/config.toml
+```
 
 ## Configuration
 
@@ -389,8 +387,7 @@ commands = [["nm-applet"]]
 ```
 
 The compositor and wallpaper are built in and are not autostart entries; bars and
-portals are launched here like any other program. Maverick ships no status bar —
-use polybar, waybar, eww, or similar; it reserves screen space for any dock that
+portals are launched here like any other program. Maverick ships no status bar — use any external status bar; it reserves screen space for any dock that
 publishes `_NET_WM_STRUT_PARTIAL`/`_NET_WM_STRUT`, so tiled windows never overlap
 it. For status text, Maverick exposes the root window name through
 `maverickctl state` / `maverickctl subscribe`.
@@ -630,50 +627,34 @@ The workspace is laid out as:
 
 ```text
 Maverick/
-├── src/                     # `maverick` — the WM binary and core logic
-│   ├── main.rs               entry point, signal handling, autostart, control wiring
-│   ├── config.rs             compiled default configuration
-│   ├── userconfig.rs         optional config.toml parsing and merge
-│   ├── types.rs              core data model (State, Monitor, Workspace, Column, Client)
-│   ├── core/                 pure logic layer (no X11)
-│   │   ├── engine.rs          Engine::dispatch(Action) -> Vec<Effect>
-│   │   ├── effect.rs          Effect vocabulary (core/backend seam)
-│   │   ├── present.rs         fullscreen/maximize presentation
-│   │   ├── layout.rs           column arrangement
-│   │   ├── grid.rs            deterministic grid engine
-│   │   ├── desired.rs         DesiredState hand-off
-│   │   ├── session.rs          session persistence/recovery
-│   │   ├── wallpaper.rs        wallpaper domain model
-│   │   ├── invariants.rs       State::check_invariants()
-│   │   ├── ipc.rs              control-socket state/action helpers
-│   │   ├── action.rs           unified Action vocabulary (TOML + IPC)
-│   │   └── commands.rs         per-Action handlers
+├── src/                     entry point, configuration, and core logic
+│   ├── main.rs              signals, autostart, and control wiring
+│   ├── config.rs            compiled default configuration
+│   ├── userconfig.rs        optional TOML config parsing and merge
+│   ├── types.rs             core data model (State, Monitor, Workspace, Column, Client)
+│   ├── core/                pure logic layer — no X11
+│   │   ├── engine.rs         Engine::dispatch(Action) -> Vec<Effect>
+│   │   ├── layout.rs         column and grid layout engines
+│   │   ├── present.rs        fullscreen / maximize presentation
+│   │   ├── desired.rs        DesiredState hand-off to the Reconciler
+│   │   └── session.rs        session persistence and recovery
 │   └── backend/
-│       └── x11/               X11 backend (the only X11-speaking code)
-│           ├── mod.rs          WindowManager, event loop, RandR
-│           ├── manage.rs       window discovery and setup
-│           ├── events.rs       X event dispatch
-│           ├── ewmh.rs         EWMH property maintenance
-│           ├── actions.rs      effect execution, reload, restart
-│           ├── input.rs        keymap and key grabs
-│           ├── pointer.rs      drag/resize, click focus
-│           ├── render.rs       float clamping, focus, restack
-│           ├── reconciler.rs   single owner of applied geometry
-│           ├── struts.rs       external dock reservation
-│           ├── compositor.rs   GL damage tracking, wallpaper, draw
-│           ├── framesched.rs   frame scheduler
-│           └── hubevents.rs    control-hub event bridging
-├── maverick-sys/            # IPC, per-session identity, control server, discovery
-├── maverick-gl/             # hand-written GLX / OpenGL FFI for the compositor
-├── maverick-img/            # dependency-free image (PNG) decode
-├── maverick-toml/           # zero-dependency TOML parser
-├── maverick-dialog/         # standalone quit-confirmation window
-├── maverick-installer/      # installer (workspace member)
+│       └── x11/             the only X11-speaking code
+│           ├── mod.rs         WindowManager, event loop, RandR
+│           ├── reconciler.rs  single owner of applied geometry
+│           ├── compositor.rs  GL damage tracking and draw
+│           └── framesched.rs  frame scheduler
+├── maverick-sys/            IPC, per-session identity, control server, discovery
+├── maverick-gl/             hand-written GLX / OpenGL FFI
+├── maverick-img/            dependency-free PNG decode
+├── maverick-toml/           zero-dependency TOML parser
+├── maverick-dialog/         standalone quit-confirmation window
+├── maverick-installer/      installer (workspace member)
 ├── config/
 │   └── config.toml          full, commented sample configuration
-├── tests/                   # Xephyr integration harness and C test clients
+├── tests/                   Xephyr integration harness and C test clients
 ├── CHANGELOG.md
-├── Cargo.toml               # workspace root and the `maverick` package
+├── Cargo.toml              workspace root and the `maverick` package
 ├── Cargo.lock
 ├── LICENSE
 └── README.md
