@@ -68,7 +68,7 @@ a Xephyr test instance) no longer collide.
   (where each fake press synthesises a `MappingNotify` and a regrab) is a
   test-environment race, not a regression — it appears identically with the
   reorder reverted.
-- **(sin confirmar) `startx` crashing Xorg with `EnterVT failed` / `Failed to
+- **`startx` crashing Xorg with `EnterVT failed` / `Failed to
   enable any CRTC` on launch.** `maverick_sys::detach_from_terminal()` called
   `setsid()` unconditionally, before checking whether stdin was even a real
   terminal. Under `startx`, that put Maverick into a brand-new POSIX session
@@ -127,7 +127,7 @@ shipped as 0.18.3.
 
 ### Added
 
-- **(sin confirmar) `Rule::ignore_initial_state` — modo "Apple" contra apps
+- **`Rule::ignore_initial_state` — modo "Apple" contra apps
   berrinchudas.** GTK (Firefox el peor de todos) recuerda si la última
   ventana quedó maximizada/fullscreen y lo vuelve a pedir vía
   `_NET_WM_STATE` al mapear; Maverick lo honraba sin preguntar, así que la
@@ -197,7 +197,7 @@ shipped as 0.18.3.
 
 ### Fixed
 
-- **(sin confirmar) El scroll-culling borraba ventanas (abrir 3+ las perdía).**
+- **El scroll-culling borraba ventanas (abrir 3+ las perdía).**
   `hide_offscreen` unmapea las columnas fuera del viewport, pero `SUBSTRUCTURE_NOTIFY`
   (seleccionado en root) hace que el propio WM reciba ese `UnmapNotify`; `on_unmap`
   lo interpretaba como retiro del cliente y llamaba `unmanage` → la ventana se
@@ -208,7 +208,7 @@ shipped as 0.18.3.
   self.root`) sin tocar el cliente; el duplicado dirigido a la ventana sí se
   procesa. Test de regresión: `three_columns_push_first_offscreen_under_cull_margin`.
 
-- **(sin confirmar) `GrowCol` paniqueaba con 21+ columnas.** El tope superior del
+- **`GrowCol` paniqueaba con 21+ columnas.** El tope superior del
   `clamp` era `1.0 - 0.05*(n-1)`, que baja de `0.05` (el piso) a partir de 21
   columnas; `f32::clamp` hace `assert!(min <= max)` y el WM moría (debug y
   release) con el keybind por defecto `Mod4+Ctrl+H/L`. El tope ahora es
@@ -258,7 +258,7 @@ shipped as 0.18.3.
    padre deseado y se encola en `State::pending_transients`; al gestionarse el
    padre, `relink_pending_transients` lo reubica al monitor/workspace del
    padre, lo re-flota y lo re-centra (sin duplicarlo en la ribbon).
- - **(sin confirmar) `ToggleFullscreen` por teclado no aplicaba el estado.**
+ - **`ToggleFullscreen` por teclado no aplicaba el estado.**
   El comando mutaba `WinFlags::FULLSCREEN` y luego emitía `SetFullscreen`, pero
   el handler `set_fullscreen` hace early-return cuando el flag ya coincide, así
   que nunca se escribía `_NET_WM_STATE`, ni `_NET_WM_BYPASS_COMPOSITOR` (picom
@@ -267,35 +267,35 @@ shipped as 0.18.3.
   muta el flag: se lo deja al efecto (bug C3). Análogo para el nuevo
   `ToggleMaximize` (ver abajo).
 
-- **(sin confirmar) Overview no movía el foco real.** `OverviewNav` / `OverviewEnter`
+- **Overview no movía el foco real.** `OverviewNav` / `OverviewEnter`
   movían `ws.focus.column_idx` y solo emitían `ArrangeMonitor`, dejando
   `ws.focus.column_idx` desincronizado de `mon.focused` (lo que además rompía la
   protección anti-culling de la columna enfocada, bug C1). Ahora ambos comandos
   emiten `FocusWindow` sobre la ventana seleccionada (bug C4).
 
-- **(sin confirmar) La animación de cámara al abrir ventanas estaba muerta.**
+- **La animación de cámara al abrir ventanas estaba muerta.**
   `manage` calculaba `was_empty ? snap : target` y luego hacía un `snap` incondicional
   que lo pisaba; el segundo ya no existe, así que abrir una ventana con otras
   presentes ahora anima la cámara en vez de teletransportarla (bug C5).
 
-- **(sin confirmar) `GrowColumn` robaba ancho a las vecinas.** En un layout de
+- **`GrowColumn` robaba ancho a las vecinas.** En un layout de
   scroll los pesos de columna son independientes y crecer una no debe tocar las
   demás (la cinta se hace más larga y la cámara scrollea). El comando ahora solo
   ajusta el `weight` de la columna enfocada y clampea el tope a `max >= 0.05`
   (bug C7); además ya no hace early-return con una sola columna, así que la
   única ventana sí se puede redimensionar.
 
-- **(sin confirmar) `MoveToWorkspace` y `ToggleFloat` dejaban la cámara
+- **`MoveToWorkspace` y `ToggleFloat` dejaban la cámara
   desincronizada.** Ninguno de los dos recalculaba `ideal_scroll`; la cinta
   quedaba scrolleada más allá del nuevo ancho. Ahora pasan por el helper
   `scroll_to_focused` (bug C8).
 
-- **(sin confirmar) Scroll de la cámara con la rueda.** `on_button_press` descartaba
+- **Scroll de la cámara con la rueda.** `on_button_press` descartaba
   los botones 4–7; ahora `Mod4 + rueda` mueve el foco de columna un slot por
   notch (vía `FocusDir`), que recentra la cámara — la interacción característica
   del paradigma que antes era inalcanzable (bug C9).
 
-- **(sin confirmar) Tormenta de stacking por frame (rendimiento).** `stack_overlay`
+- **Tormenta de stacking por frame (rendimiento).** `stack_overlay`
   re-emitía `raise()` para todos los floats/stickies en cada frame de animación
   (arrange corre en todos los monitores a ~125 fps). Ahora cachea el orden
   deseado por monitor (`last_stack_order`) y solo re-emite cuando cambia (bug C6).
@@ -303,7 +303,7 @@ shipped as 0.18.3.
   `do_restack` (el handler era idéntico a `stack_overlay`, que ya corre en
   `arrange_full`).
 
-- **(sin confirmar) `ToggleMaximize` accesible por teclado/IPC.** Nuevo
+- **`ToggleMaximize` accesible por teclado/IPC.** Nuevo
   `Action::ToggleMaximize` + comando + handler `SetMaximized` + evento
   `MaximizeToggled`, parseado por IPC como `toggle-maximize`, con keybind por
   defecto `Mod4+Shift+m` (bug C18). Antes el modelo *peek* de `present` solo se
@@ -314,7 +314,7 @@ shipped as 0.18.3.
   `split_bias` documentado como "fracción de ancho de workarea para columnas
   nuevas" en vez de "extra height de la fila enfocada".
 
-- **(sin confirmar) Los anchos de columna ahora se animan al cambiar el foco
+- **Los anchos de columna ahora se animan al cambiar el foco
   (glide, no salto).** `Workspace` tiene un `boost: f32` animado por columna
   (antes era un único escalar global `accordion` que solo se movía al
   entrar/salir de Overview); `tick_animations` relaja cada columna hacia 1.0 si
@@ -323,7 +323,7 @@ shipped as 0.18.3.
   `ribbon_geom` lee `c.boost` por columna (en Overview se fuerza a 0 para que
   todas quepan en la tira).
 
-- **(sin confirmar) Unificada la política de "columna nueva" en `default_col_w`
+- **Unificada la política de "columna nueva" en `default_col_w`
   (fixes usable_w shrink).** `NewColumn`, el re-homing de huérfanos en hotplug
   (`events.rs`) y todos los `add_tiled` pasan a crear la columna con el ancho
   `default_col_w` (fracción de la workarea), eliminando las 5 políticas
@@ -333,7 +333,7 @@ shipped as 0.18.3.
   así que añadir una columna ya no encoge a las demás (bug C16, coherente con el
   invariante de `add_tiled`).
 
-- **(sin confirmar) `FocusDirection`/`MoveWindow` bloqueados en fullscreen —
+- **`FocusDirection`/`MoveWindow` bloqueados en fullscreen —
   regresión vs 0.18.2.** El refactor había añadido un guard (`focused_fs`)
   que convertía ambos comandos en no-op cuando la ventana enfocada estaba en
   fullscreen; 0.18.2 nunca tuvo ese guard (`engine.rs::focus_dir`/`move_dir`
@@ -348,7 +348,7 @@ shipped as 0.18.3.
   intencional y se mantiene (existía igual en 0.18.2). Tests actualizados:
   `test_focus_direction_blocked_in_fullscreen` /
   `test_move_window_blocked_in_fullscreen` → `..._allowed_in_fullscreen`.
-- **(sin confirmar) Esquinas redondeadas en fullscreen (niri-style).**
+- **Esquinas redondeadas en fullscreen (niri-style).**
   `round_corners` ignoraba el estado de la ventana y siempre aplicaba
   `cfg.corner_radius`; en fullscreen (border 0, geometría = `screen`) esto
   recortaba el contenido bajo una máscara curva en vez de mostrar desktop
@@ -677,10 +677,14 @@ shipped as 0.18.3.
 
 - **Enforced `rustfmt` across the workspace** — formatted all crates with
   `cargo fmt` to a consistent style.
-- **Fixed all `clippy` warnings** — resolved 10 lints across `bar.rs`,
-  `manage.rs`, `engine.rs`, `types.rs`, and `ipc.rs` (`map_unwrap_or`,
-  `doc_markdown`, `redundant_closure_for_method_calls`, `match_same_arms`,
-  `unnecessary_min_or_max`). Clippy is now clean at `-D warnings`.
+- **Resolved the 10 `clippy` lints present at that point** across `manage.rs`,
+  `engine.rs`, `types.rs`, and `ipc.rs` (`map_unwrap_or`, `doc_markdown`,
+  `redundant_closure_for_method_calls`, `match_same_arms`,
+  `unnecessary_min_or_max`); the `bar.rs` occurrences no longer apply because
+  the internal bar was removed afterward. **Nota:** el workspace no está 100%
+  limpio de clippy hoy — dos `clippy::question_mark` preexistentes en
+  `maverick-sys/src/control.rs` se dejan sin arreglar a propósito (fuera de
+  alcance de esta limpieza).
 - **Clean `rustdoc` build** — fixed unclosed HTML tags (`<pid>`, `<px>`,
   `<n>`, `<cmd>`) in doc comments; docs now build with
   `RUSTDOCFLAGS="-D warnings"`.
@@ -790,8 +794,12 @@ shipped as 0.18.3.
   If the process was already a session leader, `setsid()` returns
   `EPERM` and the WM would not actually detach. The return value is now
   discarded (the subsequent `isatty` check still works), but the intent
-  is clearer and the function no longer silently depends on it
-  succeeding.
+   is clearer and the function no longer silently depends on it
+   succeeding.
+
+   (El `setsid()` se eliminó por completo en 0.18.4 — ver el fix de `startx`/
+   `EnterVT` en [Unreleased] — así que el código actual no hace ningún detach
+   de sesión POSIX.)
 
 - **`maverick-sys`: `hub::emit` held the subscriber mutex during
   channel sends.** A slow `subscribe` connection could block the WM
